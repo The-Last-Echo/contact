@@ -9,14 +9,19 @@ import com.thelastecho.contact.data.ContactMetadataEntity
 import com.thelastecho.contact.data.ContactRepository
 import com.thelastecho.contact.preferences.ThemeMode
 import com.thelastecho.contact.preferences.UserPreferencesRepository
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.mapLatest
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 data class ContactsHomeState(
     val contacts: List<ContactListEntry> = emptyList(),
+    val searchResults: List<ContactListEntry> = emptyList(),
     val metadata: Map<String, ContactMetadataEntity> = emptyMap(),
     val searchQuery: String = "",
     val themeMode: ThemeMode = ThemeMode.SYSTEM,
@@ -35,27 +40,42 @@ class ContactsViewModel(
     private val loadFailed = MutableStateFlow(false)
     private val updateFailed = MutableStateFlow(false)
 
-    val uiState = combine(
+    @OptIn(ExperimentalCoroutinesApi::class)
+    private val contactContent = combine(
         combine(contacts, contactRepository.observeMetadata()) { contactEntries, metadataEntries ->
             contactEntries to metadataEntries
         },
-        combine(searchQuery, userPreferencesRepository.themeMode) { query, themeMode ->
-            query to themeMode
-        },
+        searchQuery,
+    ) { (contactEntries, metadataEntries), query ->
+        ContactContent(
+            contacts = contactEntries,
+            metadata = metadataEntries.associateBy(ContactMetadataEntity::lookupKey),
+            query = query,
+        )
+    }.mapLatest { content ->
+        withContext(Dispatchers.Default) {
+            content.copy(
+                searchResults = filterContacts(
+                    contacts = content.contacts,
+                    metadata = content.metadata,
+                    query = content.query,
+                ),
+            )
+        }
+    }
+
+    val uiState = combine(
+        contactContent,
+        userPreferencesRepository.themeMode,
         combine(isLoading, loadFailed, updateFailed) { loading, loadError, updateError ->
             Triple(loading, loadError, updateError)
         },
-    ) { (contactEntries, metadataEntries), (query, themeMode), status ->
-        val metadata = metadataEntries
-            .associateBy(ContactMetadataEntity::lookupKey)
+    ) { content, themeMode, status ->
         ContactsHomeState(
-            contacts = filterContacts(
-                contacts = contactEntries,
-                metadata = metadata,
-                query = query,
-            ),
-            metadata = metadata,
-            searchQuery = query,
+            contacts = content.contacts,
+            searchResults = content.searchResults,
+            metadata = content.metadata,
+            searchQuery = content.query,
             themeMode = themeMode,
             isLoading = status.first,
             loadFailed = status.second,
@@ -104,6 +124,13 @@ class ContactsViewModel(
             userPreferencesRepository.setThemeMode(themeMode)
         }
     }
+
+    private data class ContactContent(
+        val contacts: List<ContactListEntry>,
+        val metadata: Map<String, ContactMetadataEntity>,
+        val query: String,
+        val searchResults: List<ContactListEntry> = emptyList(),
+    )
 
     class Factory(
         private val contactRepository: ContactRepository,
