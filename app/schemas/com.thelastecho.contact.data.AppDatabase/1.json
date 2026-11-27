@@ -1,0 +1,53 @@
+{
+  "formatVersion": 1,
+  "database": {
+    "version": 1,
+    "identityHash": "6cfa3b44766eb36d6411ddd734256f95",
+    "entities": [
+      {
+        "tableName": "contact_metadata",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`lookupKey` TEXT NOT NULL, `nickname` TEXT NOT NULL, `displayNameOverride` TEXT, `privateNote` TEXT, `isFavorite` INTEGER NOT NULL, PRIMARY KEY(`lookupKey`))",
+        "fields": [
+          {
+            "fieldPath": "lookupKey",
+            "columnName": "lookupKey",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "nickname",
+            "columnName": "nickname",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "displayNameOverride",
+            "columnName": "displayNameOverride",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "privateNote",
+            "columnName": "privateNote",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "isFavorite",
+            "columnName": "isFavorite",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "lookupKey"
+          ]
+        }
+      }
+    ],
+    "setupQueries": [
+      "CREATE TABLE IF NOT EXISTS room_master_table (id INTEGER PRIMARY KEY,identity_hash TEXT)",
+      "INSERT OR REPLACE INTO room_master_table (id,identity_hash) VALUES(42, '6cfa3b44766eb36d6411ddd734256f95')"
+    ]
+  }
+}
