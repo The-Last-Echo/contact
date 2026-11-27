@@ -56,6 +56,9 @@ sombre. La palette du prototype est une base de discussion, pas un choix figé.
 ## Première version
 
 L’accueil affiche les favoris au-dessus de la liste complète, propose une
-recherche locale, permet de modifier les favoris et offre le choix du thème
-système, clair ou sombre. Les appels, l’édition des fiches, les photos et les
-autres sources ne sont pas encore présentés comme des fonctions disponibles.
+recherche locale sur un écran dédié, permet de modifier les favoris et offre
+le choix du thème système, clair ou sombre. L’accueil utilise une seule liste
+verticale virtualisée avec des clés stables ; les favoris défilent horizontalement
+dans leur section. Le filtrage local est effectué hors du thread UI. Les appels,
+l’édition des fiches, les photos et les autres sources ne sont pas encore
+présentés comme des fonctions disponibles.
