@@ -1,6 +1,8 @@
 package com.thelastecho.contact.ui
 
 import androidx.activity.compose.BackHandler
+import androidx.compose.animation.Crossfade
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -14,19 +16,18 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.FavoriteBorder
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Tune
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -37,11 +38,17 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.PlainTooltip
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.TooltipAnchorPosition
+import androidx.compose.material3.TooltipBox
+import androidx.compose.material3.TooltipDefaults
+import androidx.compose.material3.rememberTooltipState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -50,7 +57,13 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.thelastecho.contact.data.ContactListEntry
@@ -67,33 +80,51 @@ fun ContactsHomeScreen(
     onRetry: () -> Unit,
 ) {
     var isSearchOpen by rememberSaveable { mutableStateOf(false) }
+    var searchDraft by rememberSaveable { mutableStateOf("") }
+    val focusRequester = remember { FocusRequester() }
+    val keyboardController = LocalSoftwareKeyboardController.current
+    val focusManager = LocalFocusManager.current
 
-    BackHandler(enabled = isSearchOpen) {
+    fun openSearch(initialQuery: String = "") {
+        searchDraft = initialQuery
+        onQueryChanged(initialQuery)
+        isSearchOpen = true
+    }
+
+    fun closeSearch() {
         isSearchOpen = false
+        searchDraft = ""
+        onQueryChanged("")
+        focusManager.clearFocus()
+        keyboardController?.hide()
     }
 
-    if (isSearchOpen) {
-        ContactsSearchScreen(
-            state = state,
-            hasContactsPermission = hasContactsPermission,
-            onBack = { isSearchOpen = false },
-            onQueryChanged = onQueryChanged,
-            onToggleFavorite = onToggleFavorite,
-            onRequestContactsPermission = onRequestContactsPermission,
-            onRetry = onRetry,
-        )
-    } else {
-        ContactsHomeContent(
-            state = state,
-            hasContactsPermission = hasContactsPermission,
-            onOpenSearch = { isSearchOpen = true },
-            onQueryChanged = onQueryChanged,
-            onToggleFavorite = onToggleFavorite,
-            onThemeModeSelected = onThemeModeSelected,
-            onRequestContactsPermission = onRequestContactsPermission,
-            onRetry = onRetry,
-        )
+    LaunchedEffect(isSearchOpen) {
+        if (isSearchOpen) {
+            focusRequester.requestFocus()
+            keyboardController?.show()
+        }
     }
+
+    BackHandler(enabled = isSearchOpen, onBack = ::closeSearch)
+
+    ContactsHomeContent(
+        state = state,
+        hasContactsPermission = hasContactsPermission,
+        isSearchOpen = isSearchOpen,
+        searchQuery = searchDraft,
+        focusRequester = focusRequester,
+        onOpenSearch = ::openSearch,
+        onCloseSearch = ::closeSearch,
+        onQueryChanged = { query ->
+            searchDraft = query
+            onQueryChanged(query)
+        },
+        onToggleFavorite = onToggleFavorite,
+        onThemeModeSelected = onThemeModeSelected,
+        onRequestContactsPermission = onRequestContactsPermission,
+        onRetry = onRetry,
+    )
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -101,7 +132,11 @@ fun ContactsHomeScreen(
 private fun ContactsHomeContent(
     state: ContactsHomeState,
     hasContactsPermission: Boolean,
-    onOpenSearch: () -> Unit,
+    isSearchOpen: Boolean,
+    searchQuery: String,
+    focusRequester: FocusRequester,
+    onOpenSearch: (String) -> Unit,
+    onCloseSearch: () -> Unit,
     onQueryChanged: (String) -> Unit,
     onToggleFavorite: (ContactListEntry) -> Unit,
     onThemeModeSelected: (ThemeMode) -> Unit,
@@ -112,14 +147,56 @@ private fun ContactsHomeContent(
     val favorites = remember(state.contacts, state.metadata) {
         state.contacts.filter { state.metadata[it.lookupKey]?.isFavorite == true }
     }
+    val displayedContacts = if (isSearchOpen) state.searchResults else state.contacts
 
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("Contacts", fontWeight = FontWeight.SemiBold) },
+                title = {
+                    Crossfade(
+                        targetState = isSearchOpen,
+                        animationSpec = tween(durationMillis = 160),
+                        label = "contacts-title-search",
+                    ) { searching ->
+                        if (searching) {
+                            OutlinedTextField(
+                                value = searchQuery,
+                                onValueChange = onQueryChanged,
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .focusRequester(focusRequester)
+                                    .padding(vertical = 4.dp),
+                                placeholder = { Text("Rechercher un contact") },
+                                leadingIcon = {
+                                    Icon(Icons.Default.Search, contentDescription = null)
+                                },
+                                trailingIcon = {
+                                    if (searchQuery.isNotEmpty()) {
+                                        IconButton(onClick = { onQueryChanged("") }) {
+                                            Icon(
+                                                Icons.Default.Close,
+                                                contentDescription = "Effacer la recherche",
+                                            )
+                                        }
+                                    }
+                                },
+                                singleLine = true,
+                                shape = RoundedCornerShape(18.dp),
+                            )
+                        } else {
+                            Text("Contacts", fontWeight = FontWeight.SemiBold)
+                        }
+                    }
+                },
                 actions = {
-                    IconButton(onClick = onOpenSearch) {
-                        Icon(Icons.Default.Search, contentDescription = "Rechercher")
+                    if (isSearchOpen) {
+                        IconButton(onClick = onCloseSearch) {
+                            Icon(Icons.Default.Close, contentDescription = "Fermer la recherche")
+                        }
+                    } else {
+                        IconButton(onClick = { onOpenSearch("") }) {
+                            Icon(Icons.Default.Search, contentDescription = "Rechercher")
+                        }
                     }
                     Box {
                         IconButton(onClick = { themeMenuExpanded = true }) {
@@ -190,7 +267,7 @@ private fun ContactsHomeContent(
                 ),
                 verticalArrangement = Arrangement.spacedBy(8.dp),
             ) {
-                if (favorites.isNotEmpty()) {
+                if (!isSearchOpen && favorites.isNotEmpty()) {
                     item(key = "favorites") {
                         Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                             SectionTitle("FAVORIS")
@@ -204,9 +281,9 @@ private fun ContactsHomeContent(
                                 ) { contact ->
                                     FavoriteContact(
                                         displayName = state.displayNameFor(contact),
+                                        paletteSeed = contact.lookupKey,
                                         onClick = {
-                                            onQueryChanged(contact.displayName)
-                                            onOpenSearch()
+                                            onOpenSearch(contact.displayName)
                                         },
                                     )
                                 }
@@ -215,26 +292,33 @@ private fun ContactsHomeContent(
                     }
                 }
 
-                item(key = "all-contacts-title") {
+                item(key = if (isSearchOpen) "search-results-title" else "all-contacts-title") {
                     SectionTitle(
-                        text = "TOUS LES CONTACTS",
+                        text = if (isSearchOpen) "RÉSULTATS" else "TOUS LES CONTACTS",
                         modifier = Modifier.padding(top = 12.dp),
                     )
                 }
 
-                if (state.contacts.isEmpty()) {
+                if (displayedContacts.isEmpty()) {
                     item(key = "empty-contacts") {
-                        MessagePanel("Aucun contact à afficher.")
+                        MessagePanel(
+                            if (isSearchOpen && searchQuery.isNotBlank()) {
+                                "Aucun contact ne correspond à cette recherche."
+                            } else {
+                                "Aucun contact à afficher."
+                            },
+                        )
                     }
                 } else {
                     items(
-                        items = state.contacts,
+                        items = displayedContacts,
                         key = ContactListEntry::lookupKey,
                         contentType = { "contact" },
                     ) { contact ->
                         ContactRow(
                             contact = contact,
                             displayName = state.displayNameFor(contact),
+                            paletteSeed = contact.lookupKey,
                             isFavorite = state.metadata[contact.lookupKey]?.isFavorite == true,
                             onToggleFavorite = { onToggleFavorite(contact) },
                         )
@@ -248,90 +332,6 @@ private fun ContactsHomeContent(
                             modifier = Modifier.padding(vertical = 8.dp),
                             color = MaterialTheme.colorScheme.error,
                             style = MaterialTheme.typography.bodySmall,
-                        )
-                    }
-                }
-            }
-        }
-    }
-}
-
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-private fun ContactsSearchScreen(
-    state: ContactsHomeState,
-    hasContactsPermission: Boolean,
-    onBack: () -> Unit,
-    onQueryChanged: (String) -> Unit,
-    onToggleFavorite: (ContactListEntry) -> Unit,
-    onRequestContactsPermission: () -> Unit,
-    onRetry: () -> Unit,
-) {
-    Scaffold(
-        topBar = {
-            TopAppBar(
-                title = { Text("Recherche") },
-                navigationIcon = {
-                    IconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Retour")
-                    }
-                },
-            )
-        },
-    ) { innerPadding ->
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(innerPadding)
-                .padding(horizontal = 20.dp),
-        ) {
-            OutlinedTextField(
-                value = state.searchQuery,
-                onValueChange = onQueryChanged,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(top = 8.dp, bottom = 12.dp),
-                placeholder = { Text("Rechercher un contact") },
-                leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) },
-                trailingIcon = {
-                    if (state.searchQuery.isNotEmpty()) {
-                        IconButton(onClick = { onQueryChanged("") }) {
-                            Icon(Icons.Default.Close, contentDescription = "Effacer la recherche")
-                        }
-                    }
-                },
-                singleLine = true,
-                shape = RoundedCornerShape(18.dp),
-            )
-
-            when {
-                !hasContactsPermission -> PermissionPrompt(onRequestContactsPermission)
-                state.isLoading -> MessagePanel("Chargement de vos contacts…")
-                state.loadFailed -> ErrorPanel(onRetry)
-                state.searchResults.isEmpty() -> MessagePanel(
-                    if (state.searchQuery.isBlank()) {
-                        "Aucun contact à afficher."
-                    } else {
-                        "Aucun contact ne correspond à cette recherche."
-                    },
-                )
-                else -> LazyColumn(
-                    modifier = Modifier
-                        .weight(1f)
-                        .fillMaxWidth(),
-                    verticalArrangement = Arrangement.spacedBy(8.dp),
-                    contentPadding = PaddingValues(bottom = 24.dp),
-                ) {
-                    items(
-                        items = state.searchResults,
-                        key = ContactListEntry::lookupKey,
-                        contentType = { "contact" },
-                    ) { contact ->
-                        ContactRow(
-                            contact = contact,
-                            displayName = state.displayNameFor(contact),
-                            isFavorite = state.metadata[contact.lookupKey]?.isFavorite == true,
-                            onToggleFavorite = { onToggleFavorite(contact) },
                         )
                     }
                 }
@@ -376,6 +376,7 @@ private fun PermissionPrompt(onRequestContactsPermission: () -> Unit) {
 private fun ContactRow(
     contact: ContactListEntry,
     displayName: String,
+    paletteSeed: String,
     isFavorite: Boolean,
     onToggleFavorite: () -> Unit,
 ) {
@@ -389,7 +390,7 @@ private fun ContactRow(
                 .padding(start = 14.dp, top = 10.dp, end = 4.dp, bottom = 10.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            ContactAvatar(displayName)
+            ContactAvatar(displayName, paletteSeed = paletteSeed)
             Column(
                 modifier = Modifier
                     .weight(1f)
@@ -420,32 +421,46 @@ private fun ContactRow(
 }
 
 @Composable
+@OptIn(ExperimentalMaterial3Api::class)
 private fun FavoriteContact(
     displayName: String,
+    paletteSeed: String,
     onClick: () -> Unit,
 ) {
-    Column(
-        modifier = Modifier
-            .widthIn(min = 88.dp, max = 164.dp)
-            .clip(RoundedCornerShape(18.dp))
-            .clickable(onClick = onClick)
-            .padding(horizontal = 8.dp, vertical = 8.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
+    TooltipBox(
+        positionProvider = TooltipDefaults.rememberTooltipPositionProvider(TooltipAnchorPosition.Above),
+        tooltip = { PlainTooltip { Text(displayName) } },
+        state = rememberTooltipState(),
     ) {
-        ContactAvatar(displayName, size = 58.dp)
-        Spacer(Modifier.height(6.dp))
-        Text(
-            text = displayName,
-            modifier = Modifier.fillMaxWidth(),
-            style = MaterialTheme.typography.labelMedium,
-            maxLines = 2,
-            overflow = TextOverflow.Ellipsis,
-        )
+        Column(
+            modifier = Modifier
+                .width(84.dp)
+                .testTag("favorite-$paletteSeed")
+                .clip(RoundedCornerShape(18.dp))
+                .clickable(onClick = onClick)
+                .padding(horizontal = 4.dp, vertical = 8.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+        ) {
+            ContactAvatar(displayName, size = 56.dp, paletteSeed = paletteSeed)
+            Spacer(Modifier.height(6.dp))
+            Text(
+                text = displayName,
+                modifier = Modifier.fillMaxWidth(),
+                style = MaterialTheme.typography.labelMedium,
+                textAlign = TextAlign.Center,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
     }
 }
 
 @Composable
-private fun ContactAvatar(name: String, size: androidx.compose.ui.unit.Dp = 48.dp) {
+private fun ContactAvatar(
+    name: String,
+    size: androidx.compose.ui.unit.Dp = 48.dp,
+    paletteSeed: String = name,
+) {
     val initials = remember(name) {
         name.trim()
             .split(Regex("\\s+"))
@@ -454,17 +469,25 @@ private fun ContactAvatar(name: String, size: androidx.compose.ui.unit.Dp = 48.d
             .joinToString("") { it.take(1).uppercase() }
             .ifBlank { "?" }
     }
+    val colorScheme = MaterialTheme.colorScheme
+    val avatarColors = when (Math.floorMod(paletteSeed.hashCode(), 5)) {
+        0 -> colorScheme.primaryContainer to colorScheme.onPrimaryContainer
+        1 -> colorScheme.secondaryContainer to colorScheme.onSecondaryContainer
+        2 -> colorScheme.tertiaryContainer to colorScheme.onTertiaryContainer
+        3 -> colorScheme.errorContainer to colorScheme.onErrorContainer
+        else -> colorScheme.surfaceVariant to colorScheme.onSurfaceVariant
+    }
 
     Box(
         modifier = Modifier
             .size(size)
             .clip(CircleShape)
-            .background(MaterialTheme.colorScheme.secondaryContainer),
+            .background(avatarColors.first),
         contentAlignment = Alignment.Center,
     ) {
         Text(
             text = initials,
-            color = MaterialTheme.colorScheme.onSecondaryContainer,
+            color = avatarColors.second,
             style = MaterialTheme.typography.titleMedium,
             fontWeight = FontWeight.SemiBold,
         )
