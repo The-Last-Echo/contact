@@ -77,6 +77,40 @@ class ContactsSearchInteractionTest {
     }
 
     @Test
+    fun refreshingContactsKeepsPreviouslyLoadedContactsVisible() {
+        val contacts = listOf(ContactListEntry(1, "existing-contact", "Ada Lovelace"))
+        val state = mutableStateOf(
+            ContactsHomeState(
+                contacts = contacts,
+                searchResults = contacts,
+                isLoading = true,
+            ),
+        )
+        showScreen(state) {}
+
+        composeRule.onAllNodesWithText("Ada Lovelace").assertCountEquals(1)
+        composeRule.onAllNodesWithText("Chargement de vos contacts…").assertCountEquals(0)
+    }
+
+    @Test
+    fun failedRefreshKeepsPreviousContactsVisibleAndReportsFailure() {
+        val contacts = listOf(ContactListEntry(1, "existing-contact", "Ada Lovelace"))
+        val state = mutableStateOf(
+            ContactsHomeState(
+                contacts = contacts,
+                searchResults = contacts,
+                loadFailed = true,
+            ),
+        )
+        showScreen(state) {}
+
+        composeRule.onAllNodesWithText("Ada Lovelace").assertCountEquals(1)
+        composeRule.onAllNodesWithText(
+            "Impossible de recharger les contacts. Affichage des dernières données.",
+        ).assertCountEquals(1)
+    }
+
+    @Test
     fun searchBarIsCompactAndHasOneCloseAction() {
         showScreen(mutableStateOf(ContactsHomeState())) {}
 
