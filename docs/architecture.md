@@ -31,6 +31,8 @@ synchronisation ou SDK de mesure n’est prévu.
 Room est ouverte avec SQLCipher. Un secret aléatoire de 256 bits chiffre la base ;
 Android Keystore protège ce secret au moyen d’une clé AES-GCM non exportable.
 Le secret enveloppé réside dans le stockage privé exclu des sauvegardes Android.
+L’initialisation SQLCipher/Keystore est différée au premier accès aux métadonnées
+et exécutée sur un thread IO afin de ne pas bloquer le démarrage de l’interface.
 Si le secret enveloppé ou la clé Keystore est perdu ou invalide, l’application
 doit signaler l’impossibilité de déchiffrer les données : elle ne doit ni
 recréer silencieusement une base vide ni basculer vers une base en clair.

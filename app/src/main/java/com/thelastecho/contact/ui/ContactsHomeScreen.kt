@@ -22,6 +22,7 @@ import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Favorite
@@ -37,10 +38,10 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.PlainTooltip
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TooltipAnchorPosition
@@ -59,6 +60,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.platform.testTag
@@ -159,30 +161,53 @@ private fun ContactsHomeContent(
                         label = "contacts-title-search",
                     ) { searching ->
                         if (searching) {
-                            OutlinedTextField(
-                                value = searchQuery,
-                                onValueChange = onQueryChanged,
+                            Surface(
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .focusRequester(focusRequester)
-                                    .padding(vertical = 4.dp),
-                                placeholder = { Text("Rechercher un contact") },
-                                leadingIcon = {
-                                    Icon(Icons.Default.Search, contentDescription = null)
-                                },
-                                trailingIcon = {
-                                    if (searchQuery.isNotEmpty()) {
-                                        IconButton(onClick = { onQueryChanged("") }) {
-                                            Icon(
-                                                Icons.Default.Close,
-                                                contentDescription = "Effacer la recherche",
+                                    .height(44.dp)
+                                    .testTag("contacts-search-field"),
+                                shape = RoundedCornerShape(14.dp),
+                                color = MaterialTheme.colorScheme.surfaceContainerLow,
+                            ) {
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxSize()
+                                        .padding(horizontal = 12.dp),
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                ) {
+                                    Icon(
+                                        Icons.Default.Search,
+                                        contentDescription = null,
+                                        modifier = Modifier.size(20.dp),
+                                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    )
+                                    Box(modifier = Modifier.weight(1f)) {
+                                        if (searchQuery.isEmpty()) {
+                                            Text(
+                                                text = "Rechercher",
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                                style = MaterialTheme.typography.bodyLarge,
+                                                maxLines = 1,
                                             )
                                         }
+                                        BasicTextField(
+                                            value = searchQuery,
+                                            onValueChange = onQueryChanged,
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .focusRequester(focusRequester),
+                                            singleLine = true,
+                                            textStyle = MaterialTheme.typography.bodyLarge.copy(
+                                                color = MaterialTheme.colorScheme.onSurface,
+                                            ),
+                                            cursorBrush = SolidColor(
+                                                MaterialTheme.colorScheme.primary,
+                                            ),
+                                        )
                                     }
-                                },
-                                singleLine = true,
-                                shape = RoundedCornerShape(18.dp),
-                            )
+                                }
+                            }
                         } else {
                             Text("Contacts", fontWeight = FontWeight.SemiBold)
                         }
