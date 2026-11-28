@@ -12,30 +12,30 @@ import net.zetetic.database.NoopTarget
 import net.zetetic.database.sqlcipher.SupportOpenHelperFactory
 
 class ContactApplication : Application() {
-    lateinit var contactRepository: ContactRepository
-        private set
-    lateinit var userPreferencesRepository: UserPreferencesRepository
-        private set
+    val contactRepository: ContactRepository by lazy {
+        ContactRepository(
+            ContactProviderDataSource(contentResolver),
+        ) {
+            database.contactMetadataDao()
+        }
+    }
 
-    override fun onCreate() {
-        super.onCreate()
+    val userPreferencesRepository: UserPreferencesRepository by lazy {
+        UserPreferencesRepository(this)
+    }
+
+    private val database: AppDatabase by lazy {
         System.loadLibrary("sqlcipher")
         Logger.setTarget(NoopTarget())
 
         val passphrase = KeystoreDatabasePassphrase(this).getOrCreate()
-        val database = Room.databaseBuilder(
+        Room.databaseBuilder(
             this,
             AppDatabase::class.java,
             DATABASE_NAME,
         )
             .openHelperFactory(SupportOpenHelperFactory(passphrase))
             .build()
-
-        contactRepository = ContactRepository(
-            ContactProviderDataSource(contentResolver),
-            database.contactMetadataDao(),
-        )
-        userPreferencesRepository = UserPreferencesRepository(this)
     }
 
     private companion object {

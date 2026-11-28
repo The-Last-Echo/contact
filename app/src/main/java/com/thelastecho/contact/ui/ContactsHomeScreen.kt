@@ -22,6 +22,7 @@ import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Favorite
@@ -36,11 +37,12 @@ import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.PlainTooltip
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TooltipAnchorPosition
@@ -59,6 +61,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.platform.testTag
@@ -159,30 +162,53 @@ private fun ContactsHomeContent(
                         label = "contacts-title-search",
                     ) { searching ->
                         if (searching) {
-                            OutlinedTextField(
-                                value = searchQuery,
-                                onValueChange = onQueryChanged,
+                            Surface(
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .focusRequester(focusRequester)
-                                    .padding(vertical = 4.dp),
-                                placeholder = { Text("Rechercher un contact") },
-                                leadingIcon = {
-                                    Icon(Icons.Default.Search, contentDescription = null)
-                                },
-                                trailingIcon = {
-                                    if (searchQuery.isNotEmpty()) {
-                                        IconButton(onClick = { onQueryChanged("") }) {
-                                            Icon(
-                                                Icons.Default.Close,
-                                                contentDescription = "Effacer la recherche",
+                                    .height(44.dp)
+                                    .testTag("contacts-search-field"),
+                                shape = RoundedCornerShape(14.dp),
+                                color = MaterialTheme.colorScheme.surfaceContainerLow,
+                            ) {
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxSize()
+                                        .padding(horizontal = 12.dp),
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                ) {
+                                    Icon(
+                                        Icons.Default.Search,
+                                        contentDescription = null,
+                                        modifier = Modifier.size(20.dp),
+                                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    )
+                                    Box(modifier = Modifier.weight(1f)) {
+                                        if (searchQuery.isEmpty()) {
+                                            Text(
+                                                text = "Rechercher",
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                                style = MaterialTheme.typography.bodyLarge,
+                                                maxLines = 1,
                                             )
                                         }
+                                        BasicTextField(
+                                            value = searchQuery,
+                                            onValueChange = onQueryChanged,
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .focusRequester(focusRequester),
+                                            singleLine = true,
+                                            textStyle = MaterialTheme.typography.bodyLarge.copy(
+                                                color = MaterialTheme.colorScheme.onSurface,
+                                            ),
+                                            cursorBrush = SolidColor(
+                                                MaterialTheme.colorScheme.primary,
+                                            ),
+                                        )
                                     }
-                                },
-                                singleLine = true,
-                                shape = RoundedCornerShape(18.dp),
-                            )
+                                }
+                            }
                         } else {
                             Text("Contacts", fontWeight = FontWeight.SemiBold)
                         }
@@ -237,7 +263,7 @@ private fun ContactsHomeContent(
             ) {
                 PermissionPrompt(onRequestContactsPermission)
             }
-            state.isLoading -> Box(
+            state.contacts.isEmpty() && state.isLoading -> Box(
                 modifier = Modifier
                     .fillMaxSize()
                     .padding(innerPadding)
@@ -246,7 +272,7 @@ private fun ContactsHomeContent(
             ) {
                 MessagePanel("Chargement de vos contacts…")
             }
-            state.loadFailed -> Box(
+            state.contacts.isEmpty() && state.loadFailed -> Box(
                 modifier = Modifier
                     .fillMaxSize()
                     .padding(innerPadding)
@@ -255,85 +281,114 @@ private fun ContactsHomeContent(
             ) {
                 ErrorPanel(onRetry)
             }
-            else -> LazyColumn(
+            else -> Box(
                 modifier = Modifier
                     .fillMaxSize()
                     .padding(innerPadding),
-                contentPadding = PaddingValues(
-                    start = 20.dp,
-                    top = 8.dp,
-                    end = 20.dp,
-                    bottom = 24.dp,
-                ),
-                verticalArrangement = Arrangement.spacedBy(8.dp),
             ) {
-                if (!isSearchOpen && favorites.isNotEmpty()) {
-                    item(key = "favorites") {
-                        Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                            SectionTitle("FAVORIS")
-                            LazyRow(
-                                horizontalArrangement = Arrangement.spacedBy(12.dp),
-                                contentPadding = PaddingValues(horizontal = 2.dp, vertical = 2.dp),
-                            ) {
-                                items(
-                                    items = favorites,
-                                    key = ContactListEntry::lookupKey,
-                                ) { contact ->
-                                    FavoriteContact(
-                                        displayName = state.displayNameFor(contact),
-                                        paletteSeed = contact.lookupKey,
-                                        onClick = {
-                                            onOpenSearch(contact.displayName)
-                                        },
-                                    )
+                LazyColumn(
+                    modifier = Modifier.fillMaxSize(),
+                    contentPadding = PaddingValues(
+                        start = 20.dp,
+                        top = 8.dp,
+                        end = 20.dp,
+                        bottom = 24.dp,
+                    ),
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    if (!isSearchOpen && favorites.isNotEmpty()) {
+                        item(key = "favorites") {
+                            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                                SectionTitle("FAVORIS")
+                                LazyRow(
+                                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                                    contentPadding = PaddingValues(
+                                        horizontal = 2.dp,
+                                        vertical = 2.dp,
+                                    ),
+                                ) {
+                                    items(
+                                        items = favorites,
+                                        key = ContactListEntry::lookupKey,
+                                    ) { contact ->
+                                        FavoriteContact(
+                                            displayName = state.displayNameFor(contact),
+                                            paletteSeed = contact.lookupKey,
+                                            onClick = {
+                                                onOpenSearch(contact.displayName)
+                                            },
+                                        )
+                                    }
                                 }
                             }
                         }
                     }
+
+                    if (state.loadFailed) {
+                        item(key = "contacts-refresh-error") {
+                            Text(
+                                text = "Impossible de recharger les contacts. " +
+                                    "Affichage des dernières données.",
+                                modifier = Modifier.padding(vertical = 8.dp),
+                                color = MaterialTheme.colorScheme.error,
+                                style = MaterialTheme.typography.bodySmall,
+                            )
+                        }
+                    }
+
+                    item(
+                        key = if (isSearchOpen) "search-results-title" else "all-contacts-title",
+                    ) {
+                        SectionTitle(
+                            text = if (isSearchOpen) "RÉSULTATS" else "TOUS LES CONTACTS",
+                            modifier = Modifier.padding(top = 12.dp),
+                        )
+                    }
+
+                    if (displayedContacts.isEmpty()) {
+                        item(key = "empty-contacts") {
+                            MessagePanel(
+                                if (isSearchOpen && searchQuery.isNotBlank()) {
+                                    "Aucun contact ne correspond à cette recherche."
+                                } else {
+                                    "Aucun contact à afficher."
+                                },
+                            )
+                        }
+                    } else {
+                        items(
+                            items = displayedContacts,
+                            key = ContactListEntry::lookupKey,
+                            contentType = { "contact" },
+                        ) { contact ->
+                            ContactRow(
+                                contact = contact,
+                                displayName = state.displayNameFor(contact),
+                                paletteSeed = contact.lookupKey,
+                                isFavorite = state.metadata[contact.lookupKey]?.isFavorite == true,
+                                onToggleFavorite = { onToggleFavorite(contact) },
+                            )
+                        }
+                    }
+
+                    if (state.updateFailed) {
+                        item(key = "update-error") {
+                            Text(
+                                text = "Impossible d’enregistrer ce changement. Réessayez.",
+                                modifier = Modifier.padding(vertical = 8.dp),
+                                color = MaterialTheme.colorScheme.error,
+                                style = MaterialTheme.typography.bodySmall,
+                            )
+                        }
+                    }
                 }
 
-                item(key = if (isSearchOpen) "search-results-title" else "all-contacts-title") {
-                    SectionTitle(
-                        text = if (isSearchOpen) "RÉSULTATS" else "TOUS LES CONTACTS",
-                        modifier = Modifier.padding(top = 12.dp),
+                if (state.isLoading && state.contacts.isNotEmpty()) {
+                    LinearProgressIndicator(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .align(Alignment.TopCenter),
                     )
-                }
-
-                if (displayedContacts.isEmpty()) {
-                    item(key = "empty-contacts") {
-                        MessagePanel(
-                            if (isSearchOpen && searchQuery.isNotBlank()) {
-                                "Aucun contact ne correspond à cette recherche."
-                            } else {
-                                "Aucun contact à afficher."
-                            },
-                        )
-                    }
-                } else {
-                    items(
-                        items = displayedContacts,
-                        key = ContactListEntry::lookupKey,
-                        contentType = { "contact" },
-                    ) { contact ->
-                        ContactRow(
-                            contact = contact,
-                            displayName = state.displayNameFor(contact),
-                            paletteSeed = contact.lookupKey,
-                            isFavorite = state.metadata[contact.lookupKey]?.isFavorite == true,
-                            onToggleFavorite = { onToggleFavorite(contact) },
-                        )
-                    }
-                }
-
-                if (state.updateFailed) {
-                    item(key = "update-error") {
-                        Text(
-                            text = "Impossible d’enregistrer ce changement. Réessayez.",
-                            modifier = Modifier.padding(vertical = 8.dp),
-                            color = MaterialTheme.colorScheme.error,
-                            style = MaterialTheme.typography.bodySmall,
-                        )
-                    }
                 }
             }
         }

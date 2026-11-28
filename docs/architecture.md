@@ -31,6 +31,8 @@ synchronisation ou SDK de mesure n’est prévu.
 Room est ouverte avec SQLCipher. Un secret aléatoire de 256 bits chiffre la base ;
 Android Keystore protège ce secret au moyen d’une clé AES-GCM non exportable.
 Le secret enveloppé réside dans le stockage privé exclu des sauvegardes Android.
+L’initialisation SQLCipher/Keystore est différée au premier accès aux métadonnées
+et exécutée sur un thread IO afin de ne pas bloquer le démarrage de l’interface.
 Si le secret enveloppé ou la clé Keystore est perdu ou invalide, l’application
 doit signaler l’impossibilité de déchiffrer les données : elle ne doit ni
 recréer silencieusement une base vide ni basculer vers une base en clair.
@@ -59,7 +61,8 @@ L’accueil affiche les favoris au-dessus de la liste complète, propose une
 recherche locale intégrée à l’en-tête, permet de modifier les favoris et offre
 le choix du thème système, clair ou sombre. L’accueil utilise une seule liste
 verticale virtualisée avec des clés stables ; les favoris défilent horizontalement
-dans des tuiles de dimensions constantes. Le filtrage local est effectué hors
-du thread UI. Les appels,
+dans des tuiles de dimensions constantes. Pendant une actualisation, les contacts
+déjà chargés restent visibles ; le panneau de chargement ne s’affiche que lors de
+la première lecture. Le filtrage local est effectué hors du thread UI. Les appels,
 l’édition des fiches, les photos et les autres sources ne sont pas encore
 présentés comme des fonctions disponibles.

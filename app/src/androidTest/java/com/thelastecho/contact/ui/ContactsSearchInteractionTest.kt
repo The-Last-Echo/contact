@@ -10,6 +10,7 @@ import androidx.compose.ui.test.getUnclippedBoundsInRoot
 import androidx.compose.ui.test.hasSetTextAction
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.longClick
+import androidx.compose.ui.test.onAllNodesWithContentDescription
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithTag
@@ -73,6 +74,55 @@ class ContactsSearchInteractionTest {
 
         composeRule.onNodeWithContentDescription("Rechercher").performClick()
         composeRule.onNode(hasSetTextAction()).assertIsFocused()
+    }
+
+    @Test
+    fun refreshingContactsKeepsPreviouslyLoadedContactsVisible() {
+        val contacts = listOf(ContactListEntry(1, "existing-contact", "Ada Lovelace"))
+        val state = mutableStateOf(
+            ContactsHomeState(
+                contacts = contacts,
+                searchResults = contacts,
+                isLoading = true,
+            ),
+        )
+        showScreen(state) {}
+
+        composeRule.onAllNodesWithText("Ada Lovelace").assertCountEquals(1)
+        composeRule.onAllNodesWithText("Chargement de vos contacts…").assertCountEquals(0)
+    }
+
+    @Test
+    fun failedRefreshKeepsPreviousContactsVisibleAndReportsFailure() {
+        val contacts = listOf(ContactListEntry(1, "existing-contact", "Ada Lovelace"))
+        val state = mutableStateOf(
+            ContactsHomeState(
+                contacts = contacts,
+                searchResults = contacts,
+                loadFailed = true,
+            ),
+        )
+        showScreen(state) {}
+
+        composeRule.onAllNodesWithText("Ada Lovelace").assertCountEquals(1)
+        composeRule.onAllNodesWithText(
+            "Impossible de recharger les contacts. Affichage des dernières données.",
+        ).assertCountEquals(1)
+    }
+
+    @Test
+    fun searchBarIsCompactAndHasOneCloseAction() {
+        showScreen(mutableStateOf(ContactsHomeState())) {}
+
+        composeRule.onNodeWithContentDescription("Rechercher").performClick()
+
+        val searchBar = composeRule.onNodeWithTag("contacts-search-field")
+            .getUnclippedBoundsInRoot()
+        assertEquals(44f, searchBar.bottom.value - searchBar.top.value, 0.1f)
+        composeRule.onAllNodesWithContentDescription("Fermer la recherche")
+            .assertCountEquals(1)
+        composeRule.onAllNodesWithContentDescription("Effacer la recherche")
+            .assertCountEquals(0)
     }
 
     @Test
